@@ -1,0 +1,45 @@
+---
+# how to run this file: ansible-playbook --connection=local --inventory 127.0.0.1, ansible_playbook.yml
+- name: Update OLSR2 upstream source in OLSR2 Debian git repository
+  connection: local
+  hosts: 127.0.0.1
+  vars:
+    olsr2_git_version: "{{ cmake_output.stderr | regex_search('(\\d+\\.\\d+\\.\\d+)') }}"
+    olsr2_gitcommit_version: "{{ cmake_output.stderr | regex_search('(\\d+\\.\\d+\\.\\d+\\-\\d+\\-\\w+)') }}"
+  tasks:
+  - name: Clean /tmp/oonf path
+    file:
+      state: absent
+      path: /tmp/oonf
+  - name: Clone upstream OLSR2 repository to /tmp/oonf
+    git:
+      repo: https://github.com/olsr/oonf.git
+      dest: /tmp/oonf
+  - name: Create archive olsrd2.tar.gz from upstream source
+    command: tar czf ../olsrd2.tar.gz --exclude-vcs .
+    args:
+      chdir: /tmp/oonf
+  - name: Prepare OLSR2 with cmake (to know the Git-version)
+    command: cmake ..
+    args:
+      chdir: /tmp/oonf/build
+    register: cmake_output
+  - name: Clean /tmp/olsrd2 path
+    file:
+      state: absent
+      path: /tmp/olsrd2
+  - name: Clone Debian OLSR2 repository to /tmp/olsrd2
+    git:
+      repo: https://salsa.debian.org/vchrizz-guest/olsrd2.git
+      dest: /tmp/olsrd2
+  - name: Switch source branch to upstream
+    command: git checkout -b upstream
+    args:
+      chdir: /tmp/olsrd2
+  - name: Import upstream source version {{ olsr2_gitcommit_version }}
+    command: gbp import-orig -u{{ olsr2_gitcommit_version }} /tmp/olsrd2.tar.gz
+    args:
+      chdir: /tmp/olsrd2
+#  - name: Push upstream changes back to Debian git repository
+#    command: git push origin upstream
+#    args:
